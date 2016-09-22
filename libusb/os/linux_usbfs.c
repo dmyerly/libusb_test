@@ -562,6 +562,21 @@ static int __read_sysfs_attr(struct libusb_context *ctx,
 	return value;
 }
 
+// XXX
+static int op_get_raw_descriptor(struct libusb_device *dev,
+		unsigned char *buffer, int *descriptors_len, int *host_endian) {
+	struct linux_device_priv *priv = _device_priv(dev);
+
+	if (!descriptors_len || !host_endian)
+		return LIBUSB_ERROR_INVALID_PARAM;
+	*host_endian = sysfs_has_descriptors ? 0 : 1;
+	if (buffer && (*descriptors_len >= priv->descriptors_len)) {
+		memcpy(buffer, priv->descriptors, priv->descriptors_len);
+	}
+	*descriptors_len = priv->descriptors_len;
+	return 0;
+}
+
 static int op_get_device_descriptor(struct libusb_device *dev,
 	unsigned char *buffer, int *host_endian)
 {
@@ -2580,6 +2595,7 @@ const struct usbi_os_backend linux_usbfs_backend = {
 	.exit = op_exit,
 	.get_device_list = NULL,
 	.hotplug_poll = op_hotplug_poll,
+	.get_raw_descriptor = op_get_raw_descriptor,	// XXX
 	.get_device_descriptor = op_get_device_descriptor,
 	.get_active_config_descriptor = op_get_active_config_descriptor,
 	.get_config_descriptor = op_get_config_descriptor,
