@@ -223,8 +223,10 @@
 			__FILE__ ":" LITERAL_TO_STRING(__LINE__)            \
 			" Should not be here.");
 
+#ifdef __ANROID__
 void setVM(JavaVM *);
 JavaVM *getVM();
 JNIEnv *getEnv();
+#endif
 
 #endif /* UTILBASE_H_ */
