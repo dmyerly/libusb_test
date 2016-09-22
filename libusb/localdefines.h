@@ -25,7 +25,9 @@
 #ifndef LOCALDEFINES_H_
 #define LOCALDEFINES_H_
 
+#ifdef __ANDROID__
 #include <jni.h>
+#endif
 
 #ifndef LOG_TAG
 #define LOG_TAG "libUVCCamera"
