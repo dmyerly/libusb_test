@@ -72,6 +72,10 @@
 #define		JTYPE_SYSTEM				"Ljava/lang/System;"
 #define		JTYPE_UVCCAMERA				"Lcom/serenegiant/usb/UVCCamera;"
 //
+#ifdef __ANDROID__
 typedef		jlong						ID_TYPE;
+#else
+typedef		long						ID_TYPE;
+#endif
 
 #endif /* LOCALDEFINES_H_ */
