@@ -738,7 +738,7 @@ out:
  * @param fd: file descripter that need to access device on no-rooted Android
  * @return null if not found
  */
-libusb_device * API_EXPORTED libusb_find_device(libusb_context *ctx, const int vid,
+DEFAULT_VISIBILITY libusb_device * LIBUSB_CALL libusb_find_device(libusb_context *ctx, const int vid,
 		const int pid, const char* sn, int fd) {
 
 	libusb_device **devs;
