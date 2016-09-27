@@ -35,6 +35,8 @@
 #ifdef __ANDROID__
 /* Android backend */
 #define OS_ANDROID 1
+#elif defined(__APPLE__)
+#define OS_DARWIN 1
 #else
 #define OS_LINUX 1
 #endif
