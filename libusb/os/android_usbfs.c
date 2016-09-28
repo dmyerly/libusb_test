@@ -1207,14 +1207,14 @@ static int linux_get_parent_info(struct libusb_device *dev,
 	}
 
 	/* is the parent a root hub? */
-	if (NULL == strchr(parent_sysfs_dir, '-')) {
+	/*if (NULL == strchr(parent_sysfs_dir, '-')) {
 		tmp = parent_sysfs_dir;
 		ret = asprintf(&parent_sysfs_dir, "usb%s", tmp);
 		free(tmp);
 		if (0 > ret) {
 			return LIBUSB_ERROR_NO_MEM;
 		}
-	}
+	}*/
 
 retry:
 	/* find the parent in the context */
