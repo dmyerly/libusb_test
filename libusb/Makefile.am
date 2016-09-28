@@ -6,6 +6,7 @@ lib_LTLIBRARIES = libusb-1.0.la
 
 POSIX_POLL_SRC = os/poll_posix.c
 LINUX_USBFS_SRC = os/linux_usbfs.c
+ANDROID_USBFS_SRC = os/android_usbfs.c
 DARWIN_USB_SRC = os/darwin_usb.c
 OPENBSD_USB_SRC = os/openbsd_usb.c
 NETBSD_USB_SRC = os/netbsd_usb.c
@@ -14,7 +15,7 @@ WINCE_USB_SRC = os/wince_usb.c os/wince_usb.h
 
 EXTRA_DIST = $(LINUX_USBFS_SRC) $(DARWIN_USB_SRC) $(OPENBSD_USB_SRC) \
 	$(NETBSD_USB_SRC) $(WINDOWS_USB_SRC) $(WINCE_USB_SRC) \
-	$(POSIX_POLL_SRC) \
+	$(POSIX_POLL_SRC) $(ANDROID_USBFS_SRC) \
 	os/threads_posix.c os/threads_windows.c \
 	os/linux_udev.c os/linux_netlink.c
 
@@ -22,10 +23,11 @@ if OS_LINUX
 
 if USE_UDEV
 OS_SRC = $(LINUX_USBFS_SRC) $(POSIX_POLL_SRC) \
-	os/linux_udev.c
+	$(ANDROID_USBFS_SRC) os/linux_udev.c
 else
 OS_SRC = $(LINUX_USBFS_SRC) $(POSIX_POLL_SRC) \
-	os/linux_netlink.c
+	$(ANDROID_USBFS_SRC) os/linux_netlink.c \
+	os/android_netlink.c
 endif
 
 endif
@@ -67,8 +69,8 @@ endif
 libusb_1_0_la_CFLAGS = $(AM_CFLAGS)
 libusb_1_0_la_LDFLAGS = $(LTLDFLAGS)
 libusb_1_0_la_SOURCES = libusbi.h core.c descriptor.c io.c strerror.c sync.c \
-	os/linux_usbfs.h os/darwin_usb.h os/windows_usb.h os/windows_common.h \
-	hotplug.h hotplug.c $(THREADS_SRC) $(OS_SRC) \
+	os/linux_usbfs.h os/darwin_usb.h os/windows_usb.h os/android_usbfs.h
+	os/windows_common.h	hotplug.h hotplug.c $(THREADS_SRC) $(OS_SRC) \
 	os/poll_posix.h os/poll_windows.h
 
 hdrdir = $(includedir)/libusb-1.0
