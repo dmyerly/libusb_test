@@ -61,7 +61,7 @@ static pthread_t libusb_linux_event_thread;
 
 static void *linux_netlink_event_thread_main(void *arg);
 
-struct sockaddr_nl snl = { .nl_family=AF_NETLINK, .nl_groups=KERNEL };
+struct sockaddr_nl android_snl = { .nl_family=AF_NETLINK, .nl_groups=KERNEL };
 
 static int set_fd_cloexec_nb (int fd)
 {
@@ -90,12 +90,12 @@ static int set_fd_cloexec_nb (int fd)
 	return 0;
 }
 
-int linux_netlink_start_event_monitor(void)
+int android_netlink_start_event_monitor(void)
 {
 	int socktype = SOCK_RAW;
 	int ret;
 
-	snl.nl_groups = KERNEL;
+	android_snl.nl_groups = KERNEL;
 
 #if defined(SOCK_CLOEXEC)
 	socktype |= SOCK_CLOEXEC;
@@ -120,7 +120,7 @@ int linux_netlink_start_event_monitor(void)
 		return LIBUSB_ERROR_OTHER;
 	}
 
-	ret = bind(linux_netlink_socket, (struct sockaddr *) &snl, sizeof(snl));
+	ret = bind(linux_netlink_socket, (struct sockaddr *) &android_snl, sizeof(android_snl));
 	if (0 != ret) {
 		close(linux_netlink_socket);
 		return LIBUSB_ERROR_OTHER;
@@ -147,7 +147,7 @@ int linux_netlink_start_event_monitor(void)
 	return LIBUSB_SUCCESS;
 }
 
-int linux_netlink_stop_event_monitor(void)
+int android_netlink_stop_event_monitor(void)
 {
 	int r;
 	char dummy = 1;
@@ -292,7 +292,7 @@ static int linux_netlink_read_message(void)
 	char buffer[1024];	// XXX changed from unsigned char to char because the first argument of linux_netlink_parse is char *
 	struct iovec iov = {.iov_base = buffer, .iov_len = sizeof(buffer)};
 	struct msghdr meh = { .msg_iov=&iov, .msg_iovlen=1,
-			     .msg_name=&snl, .msg_namelen=sizeof(snl) };
+			     .msg_name=&android_snl, .msg_namelen=sizeof(android_snl) };
 	const char *sys_name = NULL;
 	uint8_t busnum, devaddr;
 	int detached, r;
@@ -318,9 +318,9 @@ static int linux_netlink_read_message(void)
 
 	/* signal device is available (or not) to all contexts */
 	if (detached)
-		linux_device_disconnected(busnum, devaddr, sys_name);
+		android_device_disconnected(busnum, devaddr, sys_name);
 	else
-		linux_hotplug_enumerate(busnum, devaddr, sys_name);
+		android_hotplug_enumerate(busnum, devaddr, sys_name);
 
 	return 0;
 }
@@ -349,22 +349,22 @@ static void *linux_netlink_event_thread_main(void *arg)
 			break;
 		}
 		if (fds[1].revents & POLLIN) {
-        		usbi_mutex_static_lock(&linux_hotplug_lock);
+        		usbi_mutex_static_lock(&android_hotplug_lock);
 	        	linux_netlink_read_message();
-	        	usbi_mutex_static_unlock(&linux_hotplug_lock);
+	        	usbi_mutex_static_unlock(&android_hotplug_lock);
 		}
 	}
 
 	return NULL;
 }
 
-void linux_netlink_hotplug_poll(void)
+void android_netlink_hotplug_poll(void)
 {
 	int r;
 
-	usbi_mutex_static_lock(&linux_hotplug_lock);
+	usbi_mutex_static_lock(&android_hotplug_lock);
 	do {
 		r = linux_netlink_read_message();
 	} while (r == 0);
-	usbi_mutex_static_unlock(&linux_hotplug_lock);
+	usbi_mutex_static_unlock(&android_hotplug_lock);
 }
