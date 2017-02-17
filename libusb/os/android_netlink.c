@@ -55,11 +55,11 @@
 
 #define KERNEL 1
 
-static int linux_netlink_socket = -1;
+static int android_netlink_socket = -1;
 static int netlink_control_pipe[2] = { -1, -1 };
-static pthread_t libusb_linux_event_thread;
+static pthread_t libusb_android_event_thread;
 
-static void *linux_netlink_event_thread_main(void *arg);
+static void *android_netlink_event_thread_main(void *arg);
 
 struct sockaddr_nl android_snl = { .nl_family=AF_NETLINK, .nl_groups=KERNEL };
 
@@ -68,23 +68,23 @@ static int set_fd_cloexec_nb (int fd)
 	int flags;
 
 #if defined(FD_CLOEXEC)
-	flags = fcntl (linux_netlink_socket, F_GETFD);
+	flags = fcntl (android_netlink_socket, F_GETFD);
 	if (0 > flags) {
 		return -1;
 	}
 
 	if (!(flags & FD_CLOEXEC)) {
-		fcntl (linux_netlink_socket, F_SETFD, flags | FD_CLOEXEC);
+		fcntl (android_netlink_socket, F_SETFD, flags | FD_CLOEXEC);
 	}
 #endif
 
-	flags = fcntl (linux_netlink_socket, F_GETFL);
+	flags = fcntl (android_netlink_socket, F_GETFL);
 	if (0 > flags) {
 		return -1;
 	}
 
 	if (!(flags & O_NONBLOCK)) {
-		fcntl (linux_netlink_socket, F_SETFL, flags | O_NONBLOCK);
+		fcntl (android_netlink_socket, F_SETFL, flags | O_NONBLOCK);
 	}
 
 	return 0;
@@ -104,43 +104,43 @@ int android_netlink_start_event_monitor(void)
 	socktype |= SOCK_NONBLOCK;
 #endif
 
-	linux_netlink_socket = socket(PF_NETLINK, socktype, NETLINK_KOBJECT_UEVENT);
-	if (-1 == linux_netlink_socket && EINVAL == errno) {
-		linux_netlink_socket = socket(PF_NETLINK, SOCK_RAW, NETLINK_KOBJECT_UEVENT);
+	android_netlink_socket = socket(PF_NETLINK, socktype, NETLINK_KOBJECT_UEVENT);
+	if (-1 == android_netlink_socket && EINVAL == errno) {
+		android_netlink_socket = socket(PF_NETLINK, SOCK_RAW, NETLINK_KOBJECT_UEVENT);
 	}
 
-	if (-1 == linux_netlink_socket) {
+	if (-1 == android_netlink_socket) {
 		return LIBUSB_ERROR_OTHER;
 	}
 
-	ret = set_fd_cloexec_nb (linux_netlink_socket);
+	ret = set_fd_cloexec_nb (android_netlink_socket);
 	if (0 != ret) {
-		close (linux_netlink_socket);
-		linux_netlink_socket = -1;
+		close (android_netlink_socket);
+		android_netlink_socket = -1;
 		return LIBUSB_ERROR_OTHER;
 	}
 
-	ret = bind(linux_netlink_socket, (struct sockaddr *) &android_snl, sizeof(android_snl));
+	ret = bind(android_netlink_socket, (struct sockaddr *) &android_snl, sizeof(android_snl));
 	if (0 != ret) {
-		close(linux_netlink_socket);
+		close(android_netlink_socket);
 		return LIBUSB_ERROR_OTHER;
 	}
 
 	/* TODO -- add authentication */
-	/* setsockopt(linux_netlink_socket, SOL_SOCKET, SO_PASSCRED, &one, sizeof(one)); */
+	/* setsockopt(android_netlink_socket, SOL_SOCKET, SO_PASSCRED, &one, sizeof(one)); */
 
 	ret = usbi_pipe(netlink_control_pipe);
 	if (ret) {
 		usbi_err(NULL, "could not create netlink control pipe");
-	        close(linux_netlink_socket);
+	        close(android_netlink_socket);
 		return LIBUSB_ERROR_OTHER;
 	}
 
-	ret = pthread_create(&libusb_linux_event_thread, NULL, linux_netlink_event_thread_main, NULL);
+	ret = pthread_create(&libusb_android_event_thread, NULL, android_netlink_event_thread_main, NULL);
 	if (0 != ret) {
 		close(netlink_control_pipe[0]);
         close(netlink_control_pipe[1]);
-        close(linux_netlink_socket);
+        close(android_netlink_socket);
 		return LIBUSB_ERROR_OTHER;
 	}
 
@@ -152,7 +152,7 @@ int android_netlink_stop_event_monitor(void)
 	int r;
 	char dummy = 1;
 
-	if (-1 == linux_netlink_socket) {
+	if (-1 == android_netlink_socket) {
 		/* already closed. nothing to do */
 		return LIBUSB_SUCCESS;
 	}
@@ -163,10 +163,10 @@ int android_netlink_stop_event_monitor(void)
 	if (r <= 0) {
 		usbi_warn(NULL, "netlink control pipe signal failed");
 	}
-	pthread_join(libusb_linux_event_thread, NULL);
+	pthread_join(libusb_android_event_thread, NULL);
 
-	close(linux_netlink_socket);
-	linux_netlink_socket = -1;
+	close(android_netlink_socket);
+	android_netlink_socket = -1;
 
 	/* close and reset control pipe */
 	close(netlink_control_pipe[0]);
@@ -193,7 +193,7 @@ static const char *netlink_message_parse (const char *buffer, size_t len, const 
 }
 
 /* parse parts of netlink message common to both libudev and the kernel */
-static int linux_netlink_parse(char *buffer, size_t len, int *detached, const char **sys_name,
+static int android_netlink_parse(char *buffer, size_t len, int *detached, const char **sys_name,
 			       uint8_t *busnum, uint8_t *devaddr) {
 	const char *tmp;
 	int i;
@@ -287,9 +287,9 @@ static int linux_netlink_parse(char *buffer, size_t len, int *detached, const ch
 	return 0;
 }
 
-static int linux_netlink_read_message(void)
+static int android_netlink_read_message(void)
 {
-	char buffer[1024];	// XXX changed from unsigned char to char because the first argument of linux_netlink_parse is char *
+	char buffer[1024];	// XXX changed from unsigned char to char because the first argument of android_netlink_parse is char *
 	struct iovec iov = {.iov_base = buffer, .iov_len = sizeof(buffer)};
 	struct msghdr meh = { .msg_iov=&iov, .msg_iovlen=1,
 			     .msg_name=&android_snl, .msg_namelen=sizeof(android_snl) };
@@ -300,7 +300,7 @@ static int linux_netlink_read_message(void)
 
 	/* read netlink message */
 	memset(buffer, 0, sizeof(buffer));
-	len = recvmsg(linux_netlink_socket, &meh, 0);
+	len = recvmsg(android_netlink_socket, &meh, 0);
 	if (len < 32) {
 		if (errno != EAGAIN)
 			usbi_dbg("error recieving message from netlink");
@@ -309,7 +309,7 @@ static int linux_netlink_read_message(void)
 
 	/* TODO -- authenticate this message is from the kernel or udevd */
 
-	r = linux_netlink_parse(buffer, len, &detached, &sys_name, &busnum, &devaddr);
+	r = android_netlink_parse(buffer, len, &detached, &sys_name, &busnum, &devaddr);
 	if (r)
 		return r;
 
@@ -325,14 +325,14 @@ static int linux_netlink_read_message(void)
 	return 0;
 }
 
-static void *linux_netlink_event_thread_main(void *arg)
+static void *android_netlink_event_thread_main(void *arg)
 {
 	char dummy;
 	int r;
 	struct pollfd fds[] = {
 		{ .fd = netlink_control_pipe[0],
 		  .events = POLLIN },
-		{ .fd = linux_netlink_socket,
+		{ .fd = android_netlink_socket,
 		  .events = POLLIN },
 	};
 
@@ -350,7 +350,7 @@ static void *linux_netlink_event_thread_main(void *arg)
 		}
 		if (fds[1].revents & POLLIN) {
         		usbi_mutex_static_lock(&android_hotplug_lock);
-	        	linux_netlink_read_message();
+	        	android_netlink_read_message();
 	        	usbi_mutex_static_unlock(&android_hotplug_lock);
 		}
 	}
@@ -364,7 +364,7 @@ void android_netlink_hotplug_poll(void)
 
 	usbi_mutex_static_lock(&android_hotplug_lock);
 	do {
-		r = linux_netlink_read_message();
+		r = android_netlink_read_message();
 	} while (r == 0);
 	usbi_mutex_static_unlock(&android_hotplug_lock);
 }
