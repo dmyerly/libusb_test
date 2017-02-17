@@ -78,12 +78,6 @@ static struct timeval timestamp_origin = { 0, 0 };
 usbi_mutex_static_t active_contexts_lock = USBI_MUTEX_INITIALIZER;
 struct list_head active_contexts_list;
 
-//#ifdef __ANDROID__
-int android_generate_device(struct libusb_context *ctx, struct libusb_device **dev,
-	int vid, int pid, const char *serial, int fd, int busnum, int devaddr);
-//#endif
-
-
 /**
  * \mainpage libusb-1.0 API Reference
  *
@@ -626,7 +620,7 @@ int usbi_sanitize_device(struct libusb_device *dev) {
 		usbi_dbg("zero configurations, maybe an unauthorized device");
 
 	dev->num_configurations = num_configurations;
-	return LIBUSB_SUCCESS;
+	return 0;
 }
 
 /* Examine libusb's internal list of known devices, looking for one with
@@ -1213,28 +1207,13 @@ int API_EXPORTED libusb_open(libusb_device *dev, libusb_device_handle **handle) 
 	 * so that it picks up the new fd, and then continues. */
 	usbi_fd_notification(ctx);
 
-	return LIBUSB_SUCCESS;
+	return 0;
 }
 
 int API_EXPORTED libusb_set_device_fd(libusb_device *dev, int fd) {
 
 	return usbi_backend->set_device_fd(dev, fd);
 }
-
-libusb_device * LIBUSB_CALL libusb_get_device_with_fd(libusb_context *ctx,
-    int vid, int pid, const char *serial, int fd, int busnum, int devaddr) {
-
-	ENTER();
-
-	struct libusb_device *device = NULL;
-	int ret = android_generate_device(ctx, &device, vid, pid, serial, fd, busnum, devaddr);
-	if (LIKELY(!ret)) {
-		libusb_ref_device(device);	// これいるんかな? usbi_alloc_device内で既に呼ばれとるんやけど
-	}
-
-	RET(device);
-}
-
 
 /** \ingroup dev
  * Convenience function for finding a device with a particular
@@ -1576,7 +1555,7 @@ int API_EXPORTED libusb_set_configuration(libusb_device_handle *dev,
 int API_EXPORTED libusb_claim_interface(libusb_device_handle *dev,
 		int interface_number) {
 
-	int r = LIBUSB_SUCCESS;
+	int r = 0;
 
 	usbi_dbg("interface %d", interface_number);
 	if (interface_number >= USB_MAXINTERFACES)
@@ -1587,23 +1566,14 @@ int API_EXPORTED libusb_claim_interface(libusb_device_handle *dev,
 
 	usbi_mutex_lock(&dev->lock);
 	{
-		if (!(dev->claimed_interfaces & (1 << interface_number))) {
-			r = usbi_backend->claim_interface(dev, interface_number);
-			if (r == LIBUSB_ERROR_BUSY) {
-				LOGV("request detach kernel driver and retry claim interface");
-				r = usbi_backend->release_interface(dev, interface_number);
-				libusb_detach_kernel_driver(dev, interface_number);
-				if (!r) {
-					r = usbi_backend->claim_interface(dev, interface_number);
-				}
-			}
-			if (!r) {
-				dev->claimed_interfaces |= 1 << interface_number;
-			}
-		} else {
-			LOGV("already claimed");
-		}
+		if (dev->claimed_interfaces & (1 << interface_number))
+			goto out;
+
+		r = usbi_backend->claim_interface(dev, interface_number);
+		if (r == 0)
+			dev->claimed_interfaces |= 1 << interface_number;
 	}
+out:
 	usbi_mutex_unlock(&dev->lock);
 	return r;
 }
@@ -1638,17 +1608,16 @@ int API_EXPORTED libusb_release_interface(libusb_device_handle *dev,
 
 	usbi_mutex_lock(&dev->lock);
 	{
-		if (dev->claimed_interfaces & (1 << interface_number)) {
-			r = usbi_backend->release_interface(dev, interface_number);
-			if (!r) {
-				LOGV("released");
-				dev->claimed_interfaces &= ~(1 << interface_number);
-			}
-		} else {
-			// already released
+		if (UNLIKELY(!(dev->claimed_interfaces & (1 << interface_number)))) {
 			r = LIBUSB_ERROR_NOT_FOUND;
+			goto out;
 		}
+
+		r = usbi_backend->release_interface(dev, interface_number);
+		if (r == 0)
+			dev->claimed_interfaces &= ~(1 << interface_number);
 	}
+out:
 	usbi_mutex_unlock(&dev->lock);
 	return r;
 }

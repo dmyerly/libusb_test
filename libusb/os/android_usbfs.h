@@ -170,10 +170,10 @@ struct usbfs_streams {
 extern usbi_mutex_static_t android_hotplug_lock;
 
 #if defined(HAVE_LIBUDEV)
-int android_udev_start_event_monitor(void);
-int android_udev_stop_event_monitor(void);
-int android_udev_scan_devices(struct libusb_context *ctx);
-void android_udev_hotplug_poll(void);
+int linux_udev_start_event_monitor(void);
+int linux_udev_stop_event_monitor(void);
+int linux_udev_scan_devices(struct libusb_context *ctx);
+void linux_udev_hotplug_poll(void);
 #else
 int android_netlink_start_event_monitor(void);
 int android_netlink_stop_event_monitor(void);
