@@ -1223,7 +1223,7 @@ DEFAULT_VISIBILITY libusb_device * LIBUSB_CALL libusb_get_device_with_fd(
 
 	struct libusb_device *device = NULL;
         if (usbi_backend->android_generate_device) {
-	    int ret = android_generate_device(ctx, &device, vid, pid, serial, fd, busnum, devaddr);
+	    int ret = usbi_backend->android_generate_device(ctx, &device, vid, pid, serial, fd, busnum, devaddr);
 	    if (LIKELY(!ret)) {
 		libusb_ref_device(device);	// これいるんかな? usbi_alloc_device内で既に呼ばれとるんやけど
 	    }
