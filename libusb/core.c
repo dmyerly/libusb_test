@@ -1221,8 +1221,9 @@ int API_EXPORTED libusb_set_device_fd(libusb_device *dev, int fd) {
 	return usbi_backend->set_device_fd(dev, fd);
 }
 
-libusb_device * LIBUSB_CALL libusb_get_device_with_fd(libusb_context *ctx,
-    int vid, int pid, const char *serial, int fd, int busnum, int devaddr) {
+DEFAULT_VISIBILITY libusb_device * LIBUSB_CALL libusb_get_device_with_fd(
+	libusb_context *ctx, int vid, int pid, const char *serial, int fd,
+	int busnum, int devaddr) {
 
 	ENTER();
 
