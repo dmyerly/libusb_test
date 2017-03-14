@@ -78,12 +78,6 @@ static struct timeval timestamp_origin = { 0, 0 };
 usbi_mutex_static_t active_contexts_lock = USBI_MUTEX_INITIALIZER;
 struct list_head active_contexts_list;
 
-//#ifdef __ANDROID__
-int android_generate_device(struct libusb_context *ctx, struct libusb_device **dev,
-	int vid, int pid, const char *serial, int fd, int busnum, int devaddr);
-//#endif
-
-
 /**
  * \mainpage libusb-1.0 API Reference
  *
@@ -1228,10 +1222,12 @@ DEFAULT_VISIBILITY libusb_device * LIBUSB_CALL libusb_get_device_with_fd(
 	ENTER();
 
 	struct libusb_device *device = NULL;
-	int ret = android_generate_device(ctx, &device, vid, pid, serial, fd, busnum, devaddr);
-	if (LIKELY(!ret)) {
+        if (usbi_backend->android_generate_device) {
+	    int ret = android_generate_device(ctx, &device, vid, pid, serial, fd, busnum, devaddr);
+	    if (LIKELY(!ret)) {
 		libusb_ref_device(device);	// これいるんかな? usbi_alloc_device内で既に呼ばれとるんやけど
-	}
+	    }
+        }
 
 	RET(device);
 }
