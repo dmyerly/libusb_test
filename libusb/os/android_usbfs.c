@@ -127,17 +127,17 @@ usbi_mutex_static_t android_hotplug_startstop_lock = USBI_MUTEX_INITIALIZER;
 /* Serialize scan-devices, event-thread, and poll */
 usbi_mutex_static_t android_hotplug_lock = USBI_MUTEX_INITIALIZER;
 
-static int linux_start_event_monitor(void);
-static int linux_stop_event_monitor(void);
-static int linux_scan_devices(struct libusb_context *ctx);
+static int android_start_event_monitor(void);
+static int android_stop_event_monitor(void);
+static int android_scan_devices(struct libusb_context *ctx);
 static int sysfs_scan_device(struct libusb_context *ctx, const char *devname);
 static int detach_kernel_driver_and_claim(struct libusb_device_handle *, int);
 
 #if !defined(USE_UDEV)
-static int linux_default_scan_devices(struct libusb_context *ctx);
+static int android_default_scan_devices(struct libusb_context *ctx);
 #endif
 
-struct linux_device_priv {
+struct android_device_priv {
 	char *sysfs_dir;
 	unsigned char *descriptors;
 	int descriptors_len;
@@ -145,7 +145,7 @@ struct linux_device_priv {
 	int fd;
 };
 
-struct linux_device_handle_priv {
+struct android_device_handle_priv {
 	int fd;
 	uint32_t caps;
 };
@@ -166,7 +166,7 @@ enum reap_action {
 	ERROR,
 };
 
-struct linux_transfer_priv {
+struct android_transfer_priv {
 	union {
 		struct usbfs_urb *urbs;
 		struct usbfs_urb **iso_urbs;
@@ -246,10 +246,10 @@ static int __get_usbfs_fd(struct libusb_device *dev, mode_t mode, int silent) {
 	return LIBUSB_ERROR_IO;
 }
 
-static struct linux_device_priv *_device_priv(struct libusb_device *device);
+static struct android_device_priv *_device_priv(struct libusb_device *device);
 static int _get_usbfs_fd(struct libusb_device *device, mode_t mode, int silent) {
 #ifdef __ANDROID__
-	struct linux_device_priv *dpriv = _device_priv(device);
+	struct android_device_priv *dpriv = _device_priv(device);
 
 	if (LIKELY(dpriv->fd > 0))
 		return dpriv->fd;
@@ -268,13 +268,13 @@ static int _get_usbfs_fd(struct libusb_device *device, mode_t mode, int silent) 
 #endif
 }
 
-static struct linux_device_priv *_device_priv(struct libusb_device *dev) {
-	return (struct linux_device_priv *) dev->os_priv;
+static struct android_device_priv *_device_priv(struct libusb_device *dev) {
+	return (struct android_device_priv *) dev->os_priv;
 }
 
-static struct linux_device_handle_priv *_device_handle_priv(
+static struct android_device_handle_priv *_device_handle_priv(
 		struct libusb_device_handle *handle) {
-	return (struct linux_device_handle_priv *) handle->os_priv;
+	return (struct android_device_handle_priv *) handle->os_priv;
 }
 
 /* check dirent for a /dev/usbdev%d.%d name
@@ -483,17 +483,17 @@ static int op_init2(struct libusb_context *ctx, const char *usbfs) {	// XXX
 	r = LIBUSB_SUCCESS;
 	if (init_count == 0) {
 		/* start up hotplug event handler */
-		int r = linux_start_event_monitor();
+		int r = android_start_event_monitor();
 		if (r != LIBUSB_SUCCESS) {
 			usbi_err(ctx, "warning: error starting hotplug event monitor");
 		}
 	}
 	if (r == LIBUSB_SUCCESS) {
-		r = linux_scan_devices(ctx);
+		r = android_scan_devices(ctx);
 		if (r == LIBUSB_SUCCESS)
 			init_count++;
 		else if (init_count == 0)
-			linux_stop_event_monitor();
+			android_stop_event_monitor();
 	} else {
 		usbi_err(ctx, "error starting hotplug event monitor");
 	}
@@ -578,14 +578,14 @@ static int op_init(struct libusb_context *ctx) {
 	r = LIBUSB_SUCCESS;
 	if (init_count == 0) {
 		/* start up hotplug event handler */
-		r = linux_start_event_monitor();
+		r = android_start_event_monitor();
 	}
 	if (r == LIBUSB_SUCCESS) {
-		r = linux_scan_devices(ctx);
+		r = android_scan_devices(ctx);
 		if (r == LIBUSB_SUCCESS)
 			init_count++;
 		else if (init_count == 0)
-			linux_stop_event_monitor();
+			android_stop_event_monitor();
 	} else
 		usbi_err(ctx, "error starting hotplug event monitor");
 	usbi_mutex_static_unlock(&android_hotplug_startstop_lock);
@@ -600,53 +600,68 @@ static void op_exit(void) {
 	assert(init_count != 0);
 	if (!--init_count) {
 		/* tear down event handler */
-		(void) linux_stop_event_monitor();
+		(void) android_stop_event_monitor();
 	}
 	usbi_mutex_static_unlock(&android_hotplug_startstop_lock);
 }
 
-static int linux_start_event_monitor(void) {
+static int android_start_event_monitor(void) {
+#ifdef __ANDROID__
+	// do nothing
+    RETURN(LIBUSB_SUCCESS, int);
+#else
 #if defined(USE_UDEV)
-	return linux_udev_start_event_monitor();
+	return android_udev_start_event_monitor();
 #else
 	return android_netlink_start_event_monitor();
 #endif
+#endif
 }
 
-static int linux_stop_event_monitor(void) {
+static int android_stop_event_monitor(void) {
+#ifdef __ANDROID__
+	RETURN(LIBUSB_SUCCESS, int);
+#else
 #if defined(USE_UDEV)
-	return linux_udev_stop_event_monitor();
+	return android_udev_stop_event_monitor();
 #else
 	return android_netlink_stop_event_monitor();
 #endif
+#endif
 }
 
-static int linux_scan_devices(struct libusb_context *ctx) {
-	int ret;
-
+static int android_scan_devices(struct libusb_context *ctx) {
+	int ret = LIBUSB_SUCCESS;
+#ifdef __ANDROID__
+	// do nothing
+#else
 	usbi_mutex_static_lock(&android_hotplug_lock);
 
 #if defined(USE_UDEV)
-	ret = linux_udev_scan_devices(ctx);
+	ret = android_udev_scan_devices(ctx);
 #else
-	ret = linux_default_scan_devices(ctx);
+	ret = android_default_scan_devices(ctx);
 #endif
 
 	usbi_mutex_static_unlock(&android_hotplug_lock);
-
+#endif
 	return ret;
 }
 
 static void op_hotplug_poll(void) {
+#ifdef __ANDROID__
+	// do nothing
+#else
 #if defined(USE_UDEV)
-	linux_udev_hotplug_poll();
+	android_udev_hotplug_poll();
 #else
 	android_netlink_hotplug_poll();
+#endif
 #endif
 }
 
 static int _open_sysfs_attr(struct libusb_device *dev, const char *attr) {
-	struct linux_device_priv *priv = _device_priv(dev);
+	struct android_device_priv *priv = _device_priv(dev);
 	char filename[PATH_MAX];
 	int fd;
 
@@ -698,7 +713,7 @@ static int __read_sysfs_attr(struct libusb_context *ctx, const char *devname,
 // XXX
 static int op_get_raw_descriptor(struct libusb_device *dev,
 		unsigned char *buffer, int *descriptors_len, int *host_endian) {
-	struct linux_device_priv *priv = _device_priv(dev);
+	struct android_device_priv *priv = _device_priv(dev);
 
 	if (!descriptors_len || !host_endian)
 		return LIBUSB_ERROR_INVALID_PARAM;
@@ -712,7 +727,7 @@ static int op_get_raw_descriptor(struct libusb_device *dev,
 
 static int op_get_device_descriptor(struct libusb_device *dev,
 		unsigned char *buffer, int *host_endian) {
-	struct linux_device_priv *priv = _device_priv(dev);
+	struct android_device_priv *priv = _device_priv(dev);
 
 	if (!host_endian)
 		return LIBUSB_ERROR_INVALID_PARAM;
@@ -923,7 +938,7 @@ static int seek_to_next_config(struct libusb_context *ctx,
 static int op_get_config_descriptor_by_value(struct libusb_device *dev,
 		uint8_t value, unsigned char **buffer, int *host_endian) {
 	struct libusb_context *ctx = DEVICE_CTX(dev);
-	struct linux_device_priv *priv = _device_priv(dev);
+	struct android_device_priv *priv = _device_priv(dev);
 	unsigned char *descriptors = priv->descriptors;
 	int size = priv->descriptors_len, r;
 	struct libusb_config_descriptor *config;
@@ -974,7 +989,7 @@ static int op_get_active_config_descriptor(struct libusb_device *dev,
 			return r;
 	} else {
 		/* Use cached bConfigurationValue */
-		struct linux_device_priv *priv = _device_priv(dev);
+		struct android_device_priv *priv = _device_priv(dev);
 		config = priv->active_config;
 	}
 	if (config == -1)
@@ -994,7 +1009,7 @@ static int op_get_config_descriptor(struct libusb_device *dev,
 		uint8_t config_index, unsigned char *buffer, size_t len,
 		int *host_endian) {
 	struct libusb_context *ctx = DEVICE_CTX(dev);
-	struct linux_device_priv *priv = _device_priv(dev);
+	struct android_device_priv *priv = _device_priv(dev);
 	unsigned char *descriptors = priv->descriptors;
 	int i, r, size = priv->descriptors_len;
 
@@ -1065,7 +1080,7 @@ static int usbfs_get_active_config(struct libusb_device *dev, int fd) {
 static int initialize_device(struct libusb_device *dev, uint8_t busnum,
 		uint8_t devaddr, const char *sysfs_dir) {
 
-	struct linux_device_priv *priv = _device_priv(dev);
+	struct android_device_priv *priv = _device_priv(dev);
 	struct libusb_context *ctx = DEVICE_CTX(dev);
 	int descriptors_size = 512; /* Begin with a 1024 byte alloc */
 	int fd, speed;
@@ -1181,7 +1196,7 @@ static int initialize_device(struct libusb_device *dev, uint8_t busnum,
 	return r;
 }
 
-static int linux_get_parent_info(struct libusb_device *dev,
+static int android_get_parent_info(struct libusb_device *dev,
 		const char *sysfs_dir) {
 	struct libusb_context *ctx = DEVICE_CTX(dev);
 	struct libusb_device *it;
@@ -1221,7 +1236,7 @@ retry:
 	usbi_mutex_lock(&ctx->usb_devs_lock);
 	list_for_each_entry(it, &ctx->usb_devs, list, struct libusb_device)
 	{
-		struct linux_device_priv *priv = _device_priv(it);
+		struct android_device_priv *priv = _device_priv(it);
 		if (0 == strcmp(priv->sysfs_dir, parent_sysfs_dir)) {
 			dev->parent_dev = libusb_ref_device(it);
 			break;
@@ -1243,6 +1258,129 @@ retry:
 	free(parent_sysfs_dir);
 
 	return LIBUSB_SUCCESS;
+}
+
+static int android_initialize_device(struct libusb_device *dev,
+	uint8_t busnum, uint8_t devaddr, int fd) {
+
+	ENTER();
+
+	struct android_device_priv *priv = _device_priv(dev);
+	struct libusb_context *ctx = DEVICE_CTX(dev);
+	uint8_t desc[4096]; // max descriptor size is 4096 bytes
+	int descriptors_size = 512; /* Begin with a 1024 byte alloc */
+	int speed;
+	ssize_t r;
+
+	dev->bus_number = busnum;
+	dev->device_address = devaddr;
+
+	LOGD("cache descriptors in memory");
+
+	priv->descriptors_len = 0;
+	memset(desc, 0, sizeof(desc));
+    if (!lseek(fd, 0, SEEK_SET)) {
+        // ディスクリプタを読み込んでローカルキャッシュする
+        int length = read(fd, desc, sizeof(desc));
+        LOGD("Device::init read returned %d errno %d\n", length, errno);
+		if (length > 0) {
+			priv->fd = fd;
+			descriptors_size = length;
+			priv->descriptors = usbi_reallocf(priv->descriptors, descriptors_size);
+			if (UNLIKELY(!priv->descriptors)) {
+				RETURN(LIBUSB_ERROR_NO_MEM, int);
+			}
+			priv->descriptors_len = length;
+			memcpy(priv->descriptors, desc, length);
+		}
+	}
+
+	if (UNLIKELY(priv->descriptors_len < DEVICE_DESC_LENGTH)) {
+		usbi_err(ctx, "short descriptor read (%d)", priv->descriptors_len);
+		LOGE("short descriptor read (%d)", priv->descriptors_len);
+		RETURN(LIBUSB_ERROR_IO, int);
+	}
+
+	if (fd < 0) {	// if could not get fd of usbfs with read/write access
+		/* cannot send a control message to determine the active
+		 * config. just assume the first one is active. */
+		usbi_warn(ctx, "Missing rw usbfs access; cannot determine "
+				"active configuration descriptor");
+		if (priv->descriptors_len
+				>= (DEVICE_DESC_LENGTH + LIBUSB_DT_CONFIG_SIZE)) {
+			struct libusb_config_descriptor config;
+			usbi_parse_descriptor(priv->descriptors + DEVICE_DESC_LENGTH,
+				"bbwbbbbb", &config, 0);
+			priv->active_config = config.bConfigurationValue;
+		} else
+			priv->active_config = -1; /* No config dt */
+
+		RETURN(LIBUSB_SUCCESS, int);
+	}
+	// if we could get fd of usbfs with read/write access
+	r = usbfs_get_active_config(dev, fd);
+	if (r > 0) {
+		priv->active_config = r;
+		r = LIBUSB_SUCCESS;
+	} else if (r == 0) {
+		/* some buggy devices have a configuration 0, but we're
+		 * reaching into the corner of a corner case here, so let's
+		 * not support buggy devices in these circumstances.
+		 * stick to the specs: a configuration value of 0 means
+		 * unconfigured. */
+		usbi_dbg("active cfg 0? assuming unconfigured device");
+		priv->active_config = -1;
+		r = LIBUSB_SUCCESS;
+	} else if (r == LIBUSB_ERROR_IO) {
+		/* buggy devices sometimes fail to report their active config.
+		 * assume unconfigured and continue the probing */
+		usbi_warn(ctx, "couldn't query active configuration, assuming"
+					" unconfigured");
+		priv->active_config = -1;
+		r = LIBUSB_SUCCESS;
+	} /* else r < 0, just return the error code */
+
+	RETURN(r, int);
+}
+
+int android_generate_device(struct libusb_context *ctx, struct libusb_device **dev,
+	int vid, int pid, const char *serial, int fd, int busnum, int devaddr) {
+
+	ENTER();
+
+	unsigned long session_id;
+	int r = 0;
+
+	*dev = NULL;
+ 	/* FIXME: session ID is not guaranteed unique as addresses can wrap and
+ 	 * will be reused. instead we should add a simple sysfs attribute with
+ 	 * a session ID. */
+	session_id = busnum << 8 | devaddr;
+ 	LOGD("allocating new device for %d/%d (session %ld)", busnum, devaddr, session_id);
+ 	*dev = usbi_alloc_device(ctx, session_id);
+ 	if (UNLIKELY(!dev)) {
+ 		RETURN(LIBUSB_ERROR_NO_MEM, int);
+ 	}
+
+ 	r = android_initialize_device(*dev, busnum, devaddr, fd);
+ 	if (UNLIKELY(r < 0)) {
+ 		LOGE("initialize_device failed: ret=%d", r);
+ 		goto out;
+ 	}
+ 	r = usbi_sanitize_device(*dev);
+ 	if (UNLIKELY(r < 0)) {
+ 		LOGE("usbi_sanitize_device failed: ret=%d", r);
+ 		goto out;
+ 	}
+
+out:
+ 	if (UNLIKELY(r < 0)) {
+ 		libusb_unref_device(*dev);
+ 	} else {
+ 		usbi_connect_device(*dev);
+ 	}
+
+ 	RETURN(r, int);
 }
 
 int android_enumerate_device(struct libusb_context *ctx, uint8_t busnum,
@@ -1280,7 +1418,7 @@ int android_enumerate_device(struct libusb_context *ctx, uint8_t busnum,
 	if (UNLIKELY(r < 0))
 		goto out;
 
-	r = linux_get_parent_info(dev, sysfs_dir);
+	r = android_get_parent_info(dev, sysfs_dir);
 	if (UNLIKELY(r < 0))
 		goto out;
 out:
@@ -1451,7 +1589,7 @@ static int sysfs_get_device_list(struct libusb_context *ctx) {
 	return r;
 }
 
-static int linux_default_scan_devices(struct libusb_context *ctx) {
+static int android_default_scan_devices(struct libusb_context *ctx) {
 	/* we can retrieve device list and descriptors from sysfs or usbfs.
 	 * sysfs is preferable, because if we use usbfs we end up resuming
 	 * any autosuspended USB devices. however, sysfs is not available
@@ -1473,13 +1611,13 @@ static int linux_default_scan_devices(struct libusb_context *ctx) {
 // because native code can not open USB device on Android when without root
 // so we need to defer real open/close operation to Java code
 static int op_set_device_fd(struct libusb_device *device, int fd) {
-	struct linux_device_priv *dpriv = _device_priv(device);
+	struct android_device_priv *dpriv = _device_priv(device);
 	dpriv->fd = fd;
 	return 0;
 }
 
 static int op_open(struct libusb_device_handle *handle) {
-	struct linux_device_handle_priv *hpriv = _device_handle_priv(handle);
+	struct android_device_handle_priv *hpriv = _device_handle_priv(handle);
 	int r;
 
 	hpriv->fd = _get_usbfs_fd(handle->dev, O_RDWR, 0);
@@ -1546,7 +1684,7 @@ static int op_get_configuration(struct libusb_device_handle *handle,
 }
 
 static int op_set_configuration(struct libusb_device_handle *handle, int config) {
-	struct linux_device_priv *priv = _device_priv(handle->dev);
+	struct android_device_priv *priv = _device_priv(handle->dev);
 	const int fd = _device_handle_priv(handle)->fd;
 	int r = ioctl(fd, IOCTL_USBFS_SETCONFIG, &config);
 	if (UNLIKELY(r)) {
@@ -1881,7 +2019,7 @@ static int op_release_interface(struct libusb_device_handle *handle, int iface) 
 }
 
 static void op_destroy_device(struct libusb_device *dev) {
-	struct linux_device_priv *priv = _device_priv(dev);
+	struct android_device_priv *priv = _device_priv(dev);
 	if (priv->descriptors)
 		free(priv->descriptors);
 	if (priv->sysfs_dir)
@@ -1893,8 +2031,8 @@ static int discard_urbs(struct usbi_transfer *itransfer, int first, int last_plu
 	ENTER();
 
 	struct libusb_transfer *transfer = USBI_TRANSFER_TO_LIBUSB_TRANSFER(itransfer);
-	struct linux_transfer_priv *tpriv = usbi_transfer_get_os_priv(itransfer);
-	struct linux_device_handle_priv *dpriv = _device_handle_priv(transfer->dev_handle);
+	struct android_transfer_priv *tpriv = usbi_transfer_get_os_priv(itransfer);
+	struct android_device_handle_priv *dpriv = _device_handle_priv(transfer->dev_handle);
 	int i, ret = 0;
 	struct usbfs_urb *urb;
 
@@ -1924,7 +2062,7 @@ static int discard_urbs(struct usbi_transfer *itransfer, int first, int last_plu
 	RETURN(ret, int);
 }
 
-static void free_iso_urbs(struct linux_transfer_priv *tpriv) {
+static void free_iso_urbs(struct android_transfer_priv *tpriv) {
 	int i;
 	for (i = 0; i < tpriv->num_urbs; i++) {
 		struct usbfs_urb *urb = tpriv->iso_urbs[i];
@@ -1941,8 +2079,8 @@ static int submit_bulk_transfer(struct usbi_transfer *itransfer) {
 
 	struct libusb_transfer *transfer
 		= USBI_TRANSFER_TO_LIBUSB_TRANSFER(itransfer);
-	struct linux_transfer_priv *tpriv = usbi_transfer_get_os_priv(itransfer);
-	struct linux_device_handle_priv *dpriv
+	struct android_transfer_priv *tpriv = usbi_transfer_get_os_priv(itransfer);
+	struct android_device_handle_priv *dpriv
 		= _device_handle_priv(transfer->dev_handle);
 	struct usbfs_urb *urbs;
 	int is_out = (transfer->endpoint & LIBUSB_ENDPOINT_DIR_MASK)
@@ -2118,8 +2256,8 @@ static int submit_bulk_transfer(struct usbi_transfer *itransfer) {
 
 static int submit_iso_transfer(struct usbi_transfer *itransfer) {
 	struct libusb_transfer *transfer = USBI_TRANSFER_TO_LIBUSB_TRANSFER(itransfer);
-	struct linux_transfer_priv *tpriv = usbi_transfer_get_os_priv(itransfer);
-	struct linux_device_handle_priv *dpriv = _device_handle_priv(transfer->dev_handle);
+	struct android_transfer_priv *tpriv = usbi_transfer_get_os_priv(itransfer);
+	struct android_device_handle_priv *dpriv = _device_handle_priv(transfer->dev_handle);
 	struct usbfs_urb **urbs;
 	size_t alloc_size;
 	const int num_packets = transfer->num_iso_packets;
@@ -2268,10 +2406,10 @@ static int submit_iso_transfer(struct usbi_transfer *itransfer) {
 }
 
 static int submit_control_transfer(struct usbi_transfer *itransfer) {
-	struct linux_transfer_priv *tpriv = usbi_transfer_get_os_priv(itransfer);
+	struct android_transfer_priv *tpriv = usbi_transfer_get_os_priv(itransfer);
 	struct libusb_transfer *transfer
 		= USBI_TRANSFER_TO_LIBUSB_TRANSFER(itransfer);
-	struct linux_device_handle_priv *dpriv
+	struct android_device_handle_priv *dpriv
 		= _device_handle_priv(transfer->dev_handle);
 	struct usbfs_urb *urb;
 	int r;
@@ -2332,7 +2470,7 @@ static int op_submit_transfer(struct usbi_transfer *itransfer) {
 
 static int op_cancel_transfer(struct usbi_transfer *itransfer) {
 	ENTER();
-	struct linux_transfer_priv *tpriv = usbi_transfer_get_os_priv(itransfer);
+	struct android_transfer_priv *tpriv = usbi_transfer_get_os_priv(itransfer);
 	struct libusb_transfer *transfer = USBI_TRANSFER_TO_LIBUSB_TRANSFER(itransfer);
 
 	switch (transfer->type) {
@@ -2360,7 +2498,7 @@ static int op_cancel_transfer(struct usbi_transfer *itransfer) {
 
 static void op_clear_transfer_priv(struct usbi_transfer *itransfer) {
 	struct libusb_transfer *transfer = USBI_TRANSFER_TO_LIBUSB_TRANSFER(itransfer);
-	struct linux_transfer_priv *tpriv = usbi_transfer_get_os_priv(itransfer);
+	struct android_transfer_priv *tpriv = usbi_transfer_get_os_priv(itransfer);
 
 	/* urbs can be freed also in submit_transfer so lock mutex first */
 	switch (transfer->type) {
@@ -2389,7 +2527,7 @@ static void op_clear_transfer_priv(struct usbi_transfer *itransfer) {
 static int handle_bulk_completion(struct libusb_device_handle *handle,	// XXX added saki
 		struct usbi_transfer *itransfer,
 		struct usbfs_urb *urb) {
-	struct linux_transfer_priv *tpriv = usbi_transfer_get_os_priv(itransfer);
+	struct android_transfer_priv *tpriv = usbi_transfer_get_os_priv(itransfer);
 	struct libusb_transfer *transfer = USBI_TRANSFER_TO_LIBUSB_TRANSFER(itransfer);
 	int urb_idx = urb - tpriv->urbs;
 
@@ -2528,7 +2666,7 @@ static int handle_iso_completion(struct libusb_device_handle *handle,	// XXX add
 		struct usbi_transfer *itransfer,
 		struct usbfs_urb *urb) {
 	struct libusb_transfer *transfer = USBI_TRANSFER_TO_LIBUSB_TRANSFER(itransfer);
-	struct linux_transfer_priv *tpriv = usbi_transfer_get_os_priv(itransfer);
+	struct android_transfer_priv *tpriv = usbi_transfer_get_os_priv(itransfer);
 	int num_urbs = tpriv->num_urbs;
 	int urb_idx = 0;
 	int i;
@@ -2648,7 +2786,7 @@ out:
 static int handle_control_completion(struct libusb_device_handle *handle,	// XXX added saki
 		struct usbi_transfer *itransfer,
 		struct usbfs_urb *urb) {
-	struct linux_transfer_priv *tpriv = usbi_transfer_get_os_priv(itransfer);
+	struct android_transfer_priv *tpriv = usbi_transfer_get_os_priv(itransfer);
 	int status;
 
 	usbi_mutex_lock(&itransfer->lock);
@@ -2714,7 +2852,7 @@ static int handle_control_completion(struct libusb_device_handle *handle,	// XXX
 }
 
 static int reap_for_handle(struct libusb_device_handle *handle) {
-	struct linux_device_handle_priv *hpriv = _device_handle_priv(handle);
+	struct android_device_handle_priv *hpriv = _device_handle_priv(handle);
 	int r;
 	struct usbfs_urb *urb;
 	struct usbi_transfer *itransfer;
@@ -2762,7 +2900,7 @@ static int op_handle_events(struct libusb_context *ctx, struct pollfd *fds,
 	for (i = 0; i < nfds && num_ready > 0; i++) {
 		struct pollfd *pollfd = &fds[i];
 		struct libusb_device_handle *handle;
-		struct linux_device_handle_priv *hpriv = NULL;
+		struct android_device_handle_priv *hpriv = NULL;
 
 		if (!pollfd->revents)
 			continue;
@@ -2876,8 +3014,8 @@ const struct usbi_os_backend android_usbfs_backend = {
 	.get_timerfd_clockid = op_get_timerfd_clockid,
 #endif
 
-	.device_priv_size = sizeof(struct linux_device_priv),
-	.device_handle_priv_size = sizeof(struct linux_device_handle_priv),
-	.transfer_priv_size = sizeof(struct linux_transfer_priv),
+	.device_priv_size = sizeof(struct android_device_priv),
+	.device_handle_priv_size = sizeof(struct android_device_handle_priv),
+	.transfer_priv_size = sizeof(struct android_transfer_priv),
 	.add_iso_packet_size = 0,
 };
