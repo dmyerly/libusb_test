@@ -516,6 +516,8 @@ struct usbi_os_backend {
 	 */
 	int (*init)(struct libusb_context *ctx);
 	int (*init2)(struct libusb_context *ctx, const char *usbfs);
+        int (*android_generate_device)(struct libusb_context *ctx, struct libusb_device **dev,
+            int vid, int pid, const char *serial, int fd, int busnum, int devaddr);
 
 	/* Deinitialization. Optional. This function should destroy anything
 	 * that was set up by init.

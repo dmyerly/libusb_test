@@ -1343,7 +1343,7 @@ static int android_initialize_device(struct libusb_device *dev,
 	RETURN(r, int);
 }
 
-int android_generate_device(struct libusb_context *ctx, struct libusb_device **dev,
+static int op_android_generate_device(struct libusb_context *ctx, struct libusb_device **dev,
 	int vid, int pid, const char *serial, int fd, int busnum, int devaddr) {
 
 	ENTER();
@@ -2973,6 +2973,7 @@ const struct usbi_os_backend android_usbfs_backend = {
 	.caps = USBI_CAP_HAS_HID_ACCESS | USBI_CAP_SUPPORTS_DETACH_KERNEL_DRIVER,
 	.init = op_init,
 	.init2 = op_init2,	// XXX
+        .android_generate_device = op_android_generate_device,
 	.exit = op_exit,
 	.get_device_list = NULL,
 	.hotplug_poll = op_hotplug_poll,

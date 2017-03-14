@@ -188,7 +188,5 @@ int android_get_device_address (struct libusb_context *ctx, int detached,
 	const char *sys_name);
 int android_enumerate_device(struct libusb_context *ctx,
 	uint8_t busnum, uint8_t devaddr, const char *sysfs_dir);
-int android_generate_device(struct libusb_context *ctx, struct libusb_device **dev,
-        int vid, int pid, const char *serial, int fd, int busnum, int devaddr);
 
 #endif
